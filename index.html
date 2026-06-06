@@ -1,42 +1,82 @@
-function doGet(e) {
-  return ContentService
-    .createTextOutput(JSON.stringify(handleRequest(e)))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>수학 기출 검색</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f0f4ff; min-height: 100vh; padding: 30px 16px; }
+    .container { max-width: 700px; margin: 0 auto; }
+    h1 { text-align: center; color: #3a3aff; margin-bottom: 6px; font-size: 1.7rem; }
+    p.sub { text-align: center; color: #888; margin-bottom: 24px; font-size: 0.9rem; }
+    .tip { background: #eef0ff; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; font-size: 0.88rem; color: #555; line-height: 1.7; }
+    .tip b { color: #3a3aff; }
+    .search-box { display: flex; gap: 10px; margin-bottom: 24px; }
+    input { flex: 1; padding: 13px 16px; border: 2px solid #d0d7ff; border-radius: 12px; font-size: 1rem; outline: none; }
+    input:focus { border-color: #3a3aff; }
+    button { padding: 13px 22px; background: #3a3aff; color: white; border: none; border-radius: 12px; font-size: 1rem; cursor: pointer; }
+    button:hover { background: #2020cc; }
+    .card { background: white; border-radius: 14px; padding: 18px 22px; margin-bottom: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.07); }
+    .card-title { font-size: 1rem; font-weight: bold; color: #222; margin-bottom: 10px; }
+    .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .tag { background: #eef0ff; color: #3a3aff; padding: 4px 12px; border-radius: 20px; font-size: 0.82rem; }
+    .tag.year { background: #fff3e0; color: #e65c00; }
+    .btn-link { display: inline-block; padding: 9px 20px; background: #3a3aff; color: white; border-radius: 10px; text-decoration: none; font-size: 0.9rem; }
+    .btn-link:hover { background: #2020cc; }
+    .empty { text-align: center; color: #aaa; margin-top: 50px; font-size: 1rem; }
+    .loading { text-align: center; color: #3a3aff; margin-top: 50px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📚 수학 기출 검색</h1>
+    <p class="sub">구글 드라이브 기출_PDF 폴더에서 검색합니다</p>
+    <div class="tip">
+      💡 <b>띄어쓰기로 AND 검색</b> 가능 &nbsp;|&nbsp;
+      예: <b>수2 적분 2025</b> &nbsp;/&nbsp; <b>수1 수열 등차</b>
+    </div>
+    <div class="search-box">
+      <input id="searchInput" type="text" placeholder="예: 수2 미분 2023" />
+      <button onclick="doSearch()">검색</button>
+    </div>
+    <div id="results"></div>
+  </div>
 
-function handleRequest(e) {
-  const query = e.parameter.q || '';
-  if (!query) return [];
+  <script>
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhbsAHBSmxE27cWZv6GUW-TziAcaVNSNfBXbU58rad13JkpSwPNoUIlJCXz_3TobnM/exec';
 
-  const keywords = query.toLowerCase().split(' ').filter(k => k.trim());
-  const folderId = getFolderId('기출_PDF');
-  if (!folderId) return { error: '기출_PDF 폴더를 찾을 수 없습니다.' };
+    document.getElementById('searchInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doSearch();
+    });
 
-  const folder = DriveApp.getFolderById(folderId);
-  const files = folder.getFilesByType('application/pdf');
-  const results = [];
-
-  while (files.hasNext()) {
-    const file = files.next();
-    const fname = file.getName().replace('.pdf', '').toLowerCase();
-    const normalized = fname.normalize('NFC');
-
-    if (keywords.every(kw => normalized.includes(kw.normalize('NFC')))) {
-      const parts = file.getName().replace('.pdf', '').split('_');
-      results.push({
-        name:  file.getName(),
-        link:  file.getUrl(),
-        major: parts[0] || '',
-        mid:   parts[1] || '',
-        minor: parts[2] || '',
-        year:  parts[3] || ''
-      });
+    async function doSearch() {
+      const q = document.getElementById('searchInput').value.trim();
+      if (!q) return;
+      document.getElementById('results').innerHTML = '<p class="loading">🔍 검색 중...</p>';
+      try {
+        const res = await fetch(`${APPS_SCRIPT_URL}?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!Array.isArray(data) || data.length === 0) {
+          document.getElementById('results').innerHTML = '<p class="empty">⚠️ 검색 결과가 없습니다.</p>';
+          return;
+        }
+        document.getElementById('results').innerHTML = data.map((f, i) => `
+          <div class="card">
+            <div class="card-title">[${i+1}] 📄 ${f.name}</div>
+            <div class="tags">
+              <span class="tag">📗 ${f.major}</span>
+              <span class="tag">📘 ${f.mid}</span>
+              <span class="tag">📙 ${f.minor}</span>
+              <span class="tag year">📅 ${f.year}</span>
+            </div>
+            <a class="btn-link" href="${f.link}" target="_blank">🔗 드라이브에서 열기 / 다운로드</a>
+          </div>
+        `).join('');
+      } catch(err) {
+        document.getElementById('results').innerHTML = '<p class="empty">❌ 오류가 발생했습니다.</p>';
+      }
     }
-  }
-  return results;
-}
-
-function getFolderId(folderName) {
-  const folders = DriveApp.getFoldersByName(folderName);
-  return folders.hasNext() ? folders.next().getId() : null;
-}
+  </script>
+</body>
+</html>
